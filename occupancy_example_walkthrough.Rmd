@@ -1,8 +1,23 @@
 ---
 title: "Occupancy example walkthrough"
+author: "Rob Cooke"
+date: "12/05/2023"
 output: html_notebook
 ---
 
+## Set-up ##
+
+Here we load the necessary packages
+
+```{r}
+
+# sparta package from github
+remotes::install_github("BiologicalRecordsCentre/sparta")
+
+# load necessary packages
+library(sparta) # sparta: occupancy models 
+
+```
 
 
 
