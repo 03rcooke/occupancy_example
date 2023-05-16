@@ -1,9 +1,13 @@
 ---
 title: "Occupancy example walkthrough"
-author: "Rob Cooke"
+author: "Rob Cooke & Nick Isaac"
 date: "12/05/2023"
 output: html_notebook
 ---
+
+## Overview of notebook ##
+
+This notebook will walkthrough preparing data (from [NBN Atlas](https://nbnatlas.org/)) and building an occupancy model for *Lasius niger* (Small Black Ant) across the UK. Although the model will be built for a single species we will use the target-group approach for the detection model and therefore we will use records for all Formicidae (Ants).
 
 ## Set-up ##
 
@@ -11,29 +15,97 @@ Here we load the necessary packages
 
 ```{r}
 
-# sparta package from github
-remotes::install_github("BiologicalRecordsCentre/sparta")
+# # sparta package from github
+# remotes::install_github("BiologicalRecordsCentre/sparta")
 
 # load necessary packages
-library(sparta) # sparta: occupancy models 
+library(sparta)
+library(dplyr)
+
+# all other packages are called directly, e.g., readr::
+# other packages needed: 
+# readr
+# skimr
+# janitor
 
 ```
 
+## Raw data ##
 
+Download  data for *Formicidae* (Ants) from [NBN Atlas](https://nbnatlas.org/)
 
+N.B. you need to be logged in to your NBN Atlas account to be able to download data
 
+I excluded records with 'unconfirmed identifications' and 'fossil records'
 
-
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+Load raw downloaded data (downloaded Mon May 15 15:12:40 UTC 2023)
 
 ```{r}
-plot(cars)
+
+# original raw records
+recs_raw_orig <- readr::read_csv("data/raw/formicidae_records-2023-05-15.csv", col_types = list(`Abundance scale` = readr::col_skip())) # readr performs safer data reading (e.g., dates are read as dates, strings are read as character)
+# skip Abundance scale column which is problematic
+
+# overview of data and columns
+skimr::skim(recs_raw_orig) %>%
+  dplyr::select(skim_type, skim_variable, n_missing)
+
+# tidy data
+recs <- recs_raw_orig %>% 
+  # tidy column names
+  janitor::clean_names() %>% 
+  # only species-level records
+  dplyr::filter(taxon_rank == "species") %>% 
+  # only records recorded to day precision
+  dplyr::filter(!is.na(start_date)) %>%
+  dplyr::filter(is.na(end_date)) %>% 
+  # only records recorded to 4-figure grid ref (1km)
+  dplyr::filter(!is.na(osgr_1km)) %>% 
+  # get year from date
+  dplyr::mutate(year = as.numeric(format(start_date, "%Y"))) %>% 
+  # exclude old data
+  dplyr::filter(year >= 1970) %>% 
+  # remove duplicates
+  dplyr::distinct(scientific_name, start_date, osgr_1km, year)
+
+# number of records after cleaning
+nrow(recs)
+
+# number of records for Lasius niger
+nrow(dplyr::filter(recs, scientific_name == "Lasius niger"))
+
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+## Data diagnostics ##
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+Run some data diagnostics within sparta
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+The plot produced shows the number of records for each year in the top plot and the average list length in a box plot at the bottom. List length is the number of taxa observed on a visit to a site, where a visit is taken to be a unique combination of ‘where’ and ‘when’. A trend in the number of observations across time is not uncommon and a formal test for such a trend is performed in the form of a linear model. Trends in the number of records over time are handled by all of the methods presented in sparta in a variety of different ways. A trend in list length can cause some methods such as the reporting rate methods to fail (see ‘LessEffortPerVisit’ scenario in [Isaac et al. (2014)](https://doi.org/10.1111/2041-210X.12254))
+
+```{r}
+
+# run data diagnostics - time period is date
+dd <- sparta::dataDiagnostics(taxa = recs$scientific_name,
+                              site = recs$osgr_1km,
+                              time_period = recs$year,
+                              progress_bar = FALSE)
+
+```
+
+## Format the data for sparta ##
+
+Here we format the data to match the structure needed to run a 'sparta' occupancy model
+
+```{r}
+
+```
+
+## Resources ##
+
+**Useful resources for sparta-style occupancy models:**<br/>
+Isaac, N.J., van Strien, A.J., August, T.A., de Zeeuw, M.P. and Roy, D.B., 2014. [Statistics for citizen science: extracting signals of change from noisy ecological data](https://doi.org/10.1111/2041-210X.12254). Methods in Ecology and Evolution, 5(10), pp.1052-1060.<br/>
+Outhwaite, C.L., Chandler, R.E., Powney, G.D., Collen, B., Gregory, R.D. and Isaac, N.J., 2018. [Prior specification in Bayesian occupancy modelling improves analysis of species occurrence data](https://doi.org/10.1016/j.ecolind.2018.05.010). Ecological Indicators, 93, pp.333-343.<br/>
+Outhwaite, C.L., Powney, G.D., August, T.A., Chandler, R.E., Rorke, S., Pescott, O.L., Harvey, M., Roy, H.E., Fox, R., Roy, D.B. and Alexander, K., 2019. [Annual estimates of occupancy for bryophytes, lichens and invertebrates in the UK, 1970–2015](https://www.nature.com/articles/s41597-019-0269-1). Scientific data, 6(1), p.259.<br/>
+Outhwaite, C.L., Gregory, R.D., Chandler, R.E., Collen, B. and Isaac, N.J., 2020. [Complex long-term biodiversity change among invertebrates, bryophytes and lichens](https://www.nature.com/articles/s41559-020-1111-z). Nature ecology & evolution, 4(3), pp.384-392.<br/>
+Cooke, R., Mancini, F., Boyd, R.J., Evans, K.L., Shaw, A., Webb, T.J. and Isaac, N.J., 2023. [Protected areas support more species than unprotected areas in Great Britain, but lose them equally rapidly](https://doi.org/10.1016/j.biocon.2022.109884). Biological Conservation, 278, p.109884.<br/>
+Boyd, R.J., August, T.A., Cooke, R., Logie, M., Mancini, F., Powney, G.D., Roy, D.B., Turvey, K. and Isaac, N.J., 2023. [An operational workflow for producing periodic estimates of species occupancy at national scales](https://onlinelibrary.wiley.com/doi/full/10.1111/brv.12961). Biological Reviews.
