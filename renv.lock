@@ -47,6 +47,41 @@
       ],
       "Hash": "699c47c606293bdfbc9fd78a93c9c8fe"
     },
+    "R2WinBUGS": {
+      "Package": "R2WinBUGS",
+      "Version": "2.1-21",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "boot",
+        "coda",
+        "graphics",
+        "stats",
+        "utils"
+      ],
+      "Hash": "2cbec2a33f7d007f5507b82eb21bbc01"
+    },
+    "R2jags": {
+      "Package": "R2jags",
+      "Version": "0.7-1",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "R2WinBUGS",
+        "abind",
+        "coda",
+        "grDevices",
+        "graphics",
+        "methods",
+        "parallel",
+        "rjags",
+        "stats",
+        "utils"
+      ],
+      "Hash": "c60fd6e7f56556a7631804c8fa9b9180"
+    },
     "R6": {
       "Package": "R6",
       "Version": "2.5.1",
@@ -91,6 +126,18 @@
         "utils"
       ],
       "Hash": "1e035db628cefb315c571202d70202fe"
+    },
+    "abind": {
+      "Package": "abind",
+      "Version": "1.4-5",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "methods",
+        "utils"
+      ],
+      "Hash": "4f57884290cc75ab22f4af9e9d4ca862"
     },
     "base64enc": {
       "Package": "base64enc",
@@ -209,6 +256,17 @@
         "utils"
       ],
       "Hash": "3f038e5ac7f41d4ac41ce658c85e3042"
+    },
+    "coda": {
+      "Package": "coda",
+      "Version": "0.19-4",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "lattice"
+      ],
+      "Hash": "24b6d006b8b2343876cf230687546932"
     },
     "colorspace": {
       "Package": "colorspace",
@@ -952,6 +1010,17 @@
         "stringr"
       ],
       "Hash": "bb5996d0bd962d214a11140d77589917"
+    },
+    "rjags": {
+      "Package": "rjags",
+      "Version": "4-14",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "coda"
+      ],
+      "Hash": "dc00e7bcbec8cd953930ec12fc9c8819"
     },
     "rlang": {
       "Package": "rlang",
