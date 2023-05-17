@@ -21,17 +21,16 @@ Here we load the necessary packages
 # # sparta package from github
 # remotes::install_github("BiologicalRecordsCentre/sparta")
 
+# # BRCmap package from github
+# remotes::install_github("colinharrower/BRCmap")
+
 # load necessary packages
 library(sparta)
 library(dplyr)
 library(R2jags)
 
 # all other packages are called directly; other packages needed: 
-# readr
-# skimr
-# janitor
-# stringr
-# DT
+# readr, skimr, janitor, stringr, DT, tibble, ggplot2, BRCmap
 
 # global parameters
 first_year <- 1970
@@ -91,7 +90,39 @@ recs <- recs_raw_orig %>%
 nrow(recs)
 
 # number of records for Lasius niger
-nrow(dplyr::filter(recs, scientific_name == focal_taxa))
+foc_recs <- dplyr::filter(recs, scientific_name == focal_taxa)
+nrow(foc_recs)
+
+# convert grid references to easting and northing
+grcoord <- suppressWarnings(BRCmap::gr2sp_points(foc_recs$osgr_1km)) %>% 
+  as.data.frame(.)
+
+# join easting and northing to data
+foc_recs_gr <- dplyr::left_join(foc_recs, grcoord, by = c("osgr_1km" = "GRIDREF")) %>% 
+  # convert eastings and northings to longitude and latitude
+  dplyr::mutate(latitude = BRCmap::OSGridstoLatLong(.$EASTING, .$NORTHING)[[1]],
+                longitude = BRCmap::OSGridstoLatLong(.$EASTING, .$NORTHING)[[2]]) %>%
+  # suppress warning about many to many
+  suppressWarnings(.)
+
+# simple ggplot of records for Lasius niger
+simple_map <- ggplot2::ggplot(data = foc_recs_gr, ggplot2::aes(x = EASTING, y = NORTHING)) +
+  # add points
+  ggplot2::geom_point() +
+  ggplot2::coord_equal() +
+  ggplot2::theme_void()
+
+# display simple_map
+simple_map
+
+leaflet_map <- leaflet::leaflet(data = foc_recs_gr) %>%
+  # default basemap
+  leaflet::addTiles() %>% 
+  # identify columns in dataframe containing coords
+  leaflet::addCircleMarkers(lng = ~longitude, lat = ~latitude) 
+
+# display leaflet_map
+leaflet_map
 
 ```
 
@@ -162,7 +193,6 @@ mod_out <- sparta::occDetFunc(taxa_name = as.character(focal_taxa),
                               burnin = 30000,
                               thinning = 6,
                               nyr = 2,
-                              additional.parameters = "z",
                               modeltype = c('ranwalk', 'halfcauchy', 'catlistlength'),
                               provenance = "NBN Atlas Formicidae Mon May 15 15:12:40 UTC 2023. vis_data_Ants.rds",
                               return_data = FALSE,
@@ -180,14 +210,13 @@ We determine convergence based on the Gelman-Rubin statistic (Rhat < 1.1)
 # load sparta model
 mod_out <- load_rdata("data/processed/Lasius niger_orig.rdata")
 
-# model code
-mod_out$model
+# # model code
+# mod_out$model
+# # The model used as provided to JAGS. Also contained is a list of fully observed variables. These are those listed in the BUGS data.
 
-# bugs output
-mod_out$BUGSoutput
-
-# bugs output summary
-mod_out$BUGSoutput$summary
+# # bugs output summary
+# mod_out$BUGSoutput$summary
+# # A summary table of the monitored parameters. The posterior distribution for each parameter is summaried with the mean, standard deviation, various credible intervals, a formal convergence metric (Rhat), and a measure of effective sample size (n.eff).
 
 # compile rhats for species:year occupancy estimates (psi)
 psi_rhats <- mod_out$BUGSoutput$summary %>%
@@ -195,28 +224,54 @@ psi_rhats <- mod_out$BUGSoutput$summary %>%
   tibble::rownames_to_column("para") %>%
   dplyr::filter(stringr::str_detect(para, "psi.fs"))
 
-# view rhats
+# view psi_rhats
 DT::datatable(dplyr::select(psi_rhats, para, mean, sd, Rhat, n.eff))
 
 # Percentage of species:year occupancy estimates (psi) that converged
 signif((nrow(dplyr::filter(psi_rhats, Rhat <= 1.1)) / nrow(psi_rhats)) * 100, 2)
 
-# plot shows trend and rhats
-plot(mod_out)
-
 # data summary from model
-data_summary <- attributes(mod_out)$metadata$analysis$summary %>% 
-  as.data.frame()
+attributes(mod_out)$metadata$analysis$summary %>% 
+  as.data.frame() %>% 
+  # view
+  head(.)
 
 # expected validity of model (see Pocock et al., 2019)
-spp_metrics <- attributes(mod_out)$metadata$analysis$spp_Metrics %>% 
-  as.data.frame()
+spp_met <- attributes(mod_out)$metadata$analysis$spp_Metrics %>% 
+  as.data.frame() 
+
+# view spp_met
+head(spp_met)
+
+# Does the model pass the EqualWt rules of thumb
+ifelse(spp_met$prop_abs >= 0.990, spp_met$P90 >= 3.1, spp_met$P90 >= 6.7)
+
+```
+
+![](images/F3.large.jpg)
+## Plot results ##
+
+```{r}
+
+# plot shows trend and rhats
+plot(mod_out)
 
 ```
 
 ## Resources ##
+<br/>
+**Going further:**
+<br/>
+Multi-species indicators (see <a href = "https://github.com/BiologicalRecordsCentre/BRCindicators" target = "_blank">BRC indicators package</a>)<br/>
 
-**Useful resources for sparta-style occupancy models:**<br/>
+Species richness, species trends, temporal beta diversity (see <a href = "https://github.com/03rcooke/pa_occ" target = "_blank">Protected Areas GitHub repository</a>)<br/>
+
+Running code on HPC (e.g., JASMIN) (see <a href = "https://github.com/03rcooke/pa_occ" target = "_blank">Protected Areas GitHub repository</a>)<br/>
+
+ROBITT assessment (see <a href = "https://github.com/03rcooke/pa_occ" target = "_blank">Protected Areas GitHub repository</a>), including use of occAssess (<a href = "https://github.com/robboyd/occAssess" target = "_blank">occAssess GitHub repository</a>)<br/>
+<br/>
+**Useful papers for sparta-style occupancy models:**
+<br/>
 Isaac, N.J., van Strien, A.J., August, T.A., de Zeeuw, M.P. and Roy, D.B., 2014.
 <a href = "https://doi.org/10.1111/2041-210X.12254" target = "_blank">Statistics for citizen science: extracting signals of change from noisy ecological data</a>, pp.1052-1060.<br/>
 
