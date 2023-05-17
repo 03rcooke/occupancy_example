@@ -26,16 +26,24 @@ library(sparta)
 library(dplyr)
 library(R2jags)
 
-# all other packages are called directly, e.g., readr::
-# other packages needed: 
+# all other packages are called directly; other packages needed: 
 # readr
 # skimr
 # janitor
+# stringr
+# DT
 
 # global parameters
 first_year <- 1970
 last_year <- 2023
 focal_taxa <- "Lasius niger"
+
+# load_rdata function
+# loads an RData file, and assigns it to an object name
+load_rdata <- function(fileName) {
+  load(fileName)
+  get(ls()[ls() != "fileName"])
+}
 
 ```
 
@@ -45,7 +53,7 @@ Download  data for *Formicidae* (Ants) from <a href = "https://nbnatlas.org/" ta
 
 N.B. you need to be logged in to your NBN Atlas account to be able to download data
 
-I excluded records with 'unconfirmed identifications' and 'fossil records'
+We excluded records with 'unconfirmed identifications' and 'fossil records'
 
 Load raw downloaded data (downloaded Mon May 15 15:12:40 UTC 2023)
 
@@ -125,26 +133,25 @@ skimr::skim(vis_data) %>%
 
 Here we run a 'sparta' occupancy model
 
-Specifically, we fit a multi-season Bayesian occupancy model (Outhwaite et al., 2018, Outhwaite et al., 2019) to the occurrence records for each species. These models separate occupancy (the proportion of occupied 1 km grid cells) and detection into hierarchically coupled submodels to allow for imperfect detection and temporal changes in recorder intensity, which are common biases in occurrence record datasets (Isaac and Pocock, 2015). 
+Specifically, we fit a multi-season Bayesian occupancy model to the occurrence records for each species. These models separate occupancy (the proportion of occupied 1 km grid cells) and detection into hierarchically coupled submodels to allow for imperfect detection and temporal changes in recorder intensity, which are common biases in occurrence record datasets. 
 
-We used a closure period (the temporal precision of the occupancy submodel) of one year (Outhwaite et al., 2018). We therefore estimated occupancy annually between `r first_year` and `r last_year`, using a separate model for each species. 
+We use a closure period (the temporal precision of the occupancy submodel) of one year. We therefore estimate occupancy annually between `r first_year` and `r last_year`, using a separate model for each species. 
 
-The detection submodel estimates the probability of detection based on repeat visits (a visit is a unique combination of 1 km grid cell and day) within years. As the data are presence-only, we used records of other species within the same taxonomic group (the target-group approach) to infer non-detections of the focal species (Kéry et al., 2010). 
+The detection submodel estimates the probability of detection based on repeat visits (a visit is a unique combination of 1 km grid cell and day) within years. As the data are presence-only, we use records of other species within the same taxonomic group (the target-group approach) to infer non-detections of the focal species. 
 
-We included the number of species recorded during a visit, categorized into lists of 1, 2–3 or 4+ records, in the detection submodel to estimate sampling intensity and variability in selective reporting (Outhwaite et al., 2019; Szabo et al., 2010; van Strien et al., 2013). 
+We include the number of species recorded during a visit, categorized into lists of 1, 2–3 or 4+ records, in the detection submodel to estimate sampling intensity and variability in selective reporting. 
 
-We also added a random effect (intercept) of grid cell to allow for variation in occupancy status and uneven sampling among grid cells (Isaac et al., 2014; Kuussaari et al., 2007).
+We also add a random effect (intercept) of grid cell to allow for variation in occupancy status and uneven sampling among grid cells.
 
-For the priors, we selected a random walk prior on the year effect, which enabled the sharing of information between the current and previous year in the occupancy submodel - imposing an *a priori* judgement that a species' occupancy is likely to be similar from one year to the next (Outhwaite et al., 2018, Outhwaite et al., 2019). 
+For the priors, we select a random walk prior on the year effect, which enables the sharing of information between the current and previous year in the occupancy submodel - imposing an *a priori* judgement that a species' occupancy is likely to be similar from one year to the next. We use uninformative priors for the remaining parameters within the model.
 
-We used uninformative priors for the remaining parameters within the model, following Outhwaite et al. (2019).
+We fit occupancy models using the occDetFunc function in the sparta package, which uses a Markov Chain Monte Carlo algorithm to fit the models via JAGS. 
 
-We fit occupancy models using the occDetFunc function in the sparta package (August et al., 2020), which uses a Markov Chain Monte Carlo algorithm to fit the models via JAGS (Plummer, 2013). 
-
-We specified three chains, 32,000 iterations, a burn in of 30,000, and a thinning rate of six. 
+We specify three chains, 32,000 iterations, a burn in of 30,000, and a thinning rate of six. 
 
 ```{r}
 
+system.time({
 mod_out <- sparta::occDetFunc(taxa_name = as.character(focal_taxa),
                               occDetdata = vis_data$occDetdata,
                               spp_vis = vis_data$spp_vis,
@@ -155,31 +162,57 @@ mod_out <- sparta::occDetFunc(taxa_name = as.character(focal_taxa),
                               burnin = 30000,
                               thinning = 6,
                               nyr = 2,
+                              additional.parameters = "z",
                               modeltype = c('ranwalk', 'halfcauchy', 'catlistlength'),
                               provenance = "NBN Atlas Formicidae Mon May 15 15:12:40 UTC 2023. vis_data_Ants.rds",
                               return_data = FALSE,
                               seed = 842845)
+})
 
 ```
 
-## Checking the model ##
+## Investigating the model ##
 
-We determined convergence based on the Gelman-Rubin statistic (Rhat < 1.1)
+We determine convergence based on the Gelman-Rubin statistic (Rhat < 1.1)
 
 ```{r}
 
+# load sparta model
+mod_out <- load_rdata("data/processed/Lasius niger_orig.rdata")
 
+# model code
+mod_out$model
+
+# bugs output
+mod_out$BUGSoutput
+
+# bugs output summary
+mod_out$BUGSoutput$summary
+
+# compile rhats for species:year occupancy estimates (psi)
+psi_rhats <- mod_out$BUGSoutput$summary %>%
+  data.frame() %>%
+  tibble::rownames_to_column("para") %>%
+  dplyr::filter(stringr::str_detect(para, "psi.fs"))
+
+# view rhats
+DT::datatable(dplyr::select(psi_rhats, para, mean, sd, Rhat, n.eff))
+
+# Percentage of species:year occupancy estimates (psi) that converged
+signif((nrow(dplyr::filter(psi_rhats, Rhat <= 1.1)) / nrow(psi_rhats)) * 100, 2)
+
+# plot shows trend and rhats
+plot(mod_out)
+
+# data summary from model
+data_summary <- attributes(mod_out)$metadata$analysis$summary %>% 
+  as.data.frame()
+
+# expected validity of model (see Pocock et al., 2019)
+spp_metrics <- attributes(mod_out)$metadata$analysis$spp_Metrics %>% 
+  as.data.frame()
 
 ```
-
-## Summarizing the results ##
-
-```{r}
-
-
-
-```
-
 
 ## Resources ##
 
@@ -190,6 +223,8 @@ Isaac, N.J., van Strien, A.J., August, T.A., de Zeeuw, M.P. and Roy, D.B., 2014.
 Outhwaite, C.L., Chandler, R.E., Powney, G.D., Collen, B., Gregory, R.D. and Isaac, N.J., 2018. <a href = "https://doi.org/10.1016/j.ecolind.2018.05.010" target = "_blank">Prior specification in Bayesian occupancy modelling improves analysis of species occurrence data</a>. Ecological Indicators, 93, pp.333-343.<br/>
 
 Outhwaite, C.L., Powney, G.D., August, T.A., Chandler, R.E., Rorke, S., Pescott, O.L., Harvey, M., Roy, H.E., Fox, R., Roy, D.B. and Alexander, K., 2019. <a href = "https://www.nature.com/articles/s41597-019-0269-1" target = "_blank">Annual estimates of occupancy for bryophytes, lichens and invertebrates in the UK, 1970–2015</a>. Scientific data, 6(1), p.259.<br/>
+
+Pocock, M.J., Logie, M.W., Isaac, N.J., Outhwaite, C.L. and August, T., 2019. <a href = "https://www.biorxiv.org/content/10.1101/813626v1" target = "_blank">Rapid assessment of the suitability of multi-species citizen science datasets for occupancy trend analysis</a>. bioRxiv, p.813626.
 
 Outhwaite, C.L., Gregory, R.D., Chandler, R.E., Collen, B. and Isaac, N.J., 2020. <a href = "https://www.nature.com/articles/s41559-020-1111-z" target = "_blank">Complex long-term biodiversity change among invertebrates, bryophytes and lichens</a>. Nature ecology & evolution, 4(3), pp.384-392.<br/>
 
