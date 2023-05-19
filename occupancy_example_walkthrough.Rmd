@@ -2,14 +2,16 @@
 title: "Occupancy example walkthrough"
 author: "Rob Cooke & Nick Isaac"
 date: "12/05/2023"
-output: html_notebook
+output: 
+  html_notebook:
+    toc: TRUE
 ---
 
-## Overview of notebook ##
+# Overview of notebook
 
 This notebook will walkthrough preparing data (from <a href = "https://nbnatlas.org/" target = "_blank">NBN Atlas</a>) and building an occupancy model for <a href = "https://www.bwars.com/ant/formicidae/formicinae/lasius-niger" target = "_blank">*Lasius niger*</a> (Small Black Ant) across the UK. Although the model will be built for a single species we will use the target-group approach for the detection model and therefore we will use records for all Formicidae (Ants).
 
-## Set-up ##
+# Set-up environment
 
 Here we load the necessary packages
 
@@ -28,9 +30,10 @@ Here we load the necessary packages
 library(sparta)
 library(dplyr)
 library(R2jags)
+library(BRCmap)
 
 # all other packages are called directly; other packages needed: 
-# readr, skimr, janitor, stringr, DT, tibble, ggplot2, BRCmap
+# readr, skimr, janitor, stringr, DT, tibble, ggplot2
 
 # global parameters
 first_year <- 1970
@@ -44,9 +47,12 @@ load_rdata <- function(fileName) {
   get(ls()[ls() != "fileName"])
 }
 
+# check where project is located
+xfun::proj_root()
+
 ```
 
-## Raw data ##
+# Raw data
 
 Download  data for *Formicidae* (Ants) from <a href = "https://nbnatlas.org/" target = "_blank">NBN Atlas</a>
 
@@ -126,7 +132,7 @@ leaflet_map
 
 ```
 
-## Data diagnostics ##
+## Data diagnostics
 
 Run some data diagnostics within sparta
 
@@ -142,7 +148,7 @@ dd <- sparta::dataDiagnostics(taxa = recs$scientific_name,
 
 ```
 
-## Format the data for sparta ##
+# Format the data for sparta
 
 Here we format the data to match the structure needed to run a 'sparta' occupancy model
 
@@ -154,13 +160,22 @@ vis_data <- sparta::formatOccData(taxa = recs$scientific_name,
 
 # saveRDS(vis_data, "data/processed/vis_data_Ants.rds")
 
+# summary of structure of vis_data
 skimr::skim(vis_data) %>% 
   # remove unnecessary columns
   dplyr::select(-n_missing, -complete_rate, -character.min, -character.max, -character.empty, -character.n_unique, -character.whitespace)
 
+# view components of vis_data
+
+## spp_vis
+head(vis_data$spp_vis)
+
+## occDetdata
+head(vis_data$occDetdata)
+
 ```
 
-## Run sparta occupancy model ##
+# Run sparta occupancy model
 
 Here we run a 'sparta' occupancy model
 
@@ -201,14 +216,14 @@ mod_out <- sparta::occDetFunc(taxa_name = as.character(focal_taxa),
 
 ```
 
-## Investigating the model ##
+# Investigating the model
 
-We determine convergence based on the Gelman-Rubin statistic (Rhat < 1.1)
+## Model object and summary
 
 ```{r}
 
 # load sparta model
-mod_out <- load_rdata("data/processed/Lasius niger_orig.rdata")
+mod_out <- load_rdata("data/processed/Lasius niger.rdata")
 
 # # model code
 # mod_out$model
@@ -217,6 +232,20 @@ mod_out <- load_rdata("data/processed/Lasius niger_orig.rdata")
 # # bugs output summary
 # mod_out$BUGSoutput$summary
 # # A summary table of the monitored parameters. The posterior distribution for each parameter is summaried with the mean, standard deviation, various credible intervals, a formal convergence metric (Rhat), and a measure of effective sample size (n.eff).
+
+# data summary from model
+attributes(mod_out)$metadata$analysis$summary %>% 
+  as.data.frame() %>% 
+  # view
+  head(.)
+
+```
+
+## Convergence
+
+We determine convergence based on the Gelman-Rubin statistic (Rhat < 1.1)
+
+```{r}
 
 # compile rhats for species:year occupancy estimates (psi)
 psi_rhats <- mod_out$BUGSoutput$summary %>%
@@ -230,26 +259,11 @@ DT::datatable(dplyr::select(psi_rhats, para, mean, sd, Rhat, n.eff))
 # Percentage of species:year occupancy estimates (psi) that converged
 signif((nrow(dplyr::filter(psi_rhats, Rhat <= 1.1)) / nrow(psi_rhats)) * 100, 2)
 
-# data summary from model
-attributes(mod_out)$metadata$analysis$summary %>% 
-  as.data.frame() %>% 
-  # view
-  head(.)
-
-# expected validity of model (see Pocock et al., 2019)
-spp_met <- attributes(mod_out)$metadata$analysis$spp_Metrics %>% 
-  as.data.frame() 
-
-# view spp_met
-head(spp_met)
-
-# Does the model pass the EqualWt rules of thumb
-ifelse(spp_met$prop_abs >= 0.990, spp_met$P90 >= 3.1, spp_met$P90 >= 6.7)
-
 ```
 
-![](images/F3.large.jpg)
-## Plot results ##
+# Model results
+
+Here we plot the occupancy trend for Lasius niger between 1970 and 2023 with the plot function in sparta. The uncertainty envelope is the 2.5th and 97.5th quantiles.
 
 ```{r}
 
@@ -257,8 +271,66 @@ ifelse(spp_met$prop_abs >= 0.990, spp_met$P90 >= 3.1, spp_met$P90 >= 6.7)
 plot(mod_out)
 
 ```
+## Metrics of change
 
-## Resources ##
+Here we calculate some metrics of change across the focal period
+
+```{r}
+
+# simple difference between first and last year
+simp <- sparta::occurrenceChange(mod_out, firstYear = first_year, lastYear = last_year, change = "difference")
+
+# mean, median, cis
+simp[1:3]
+
+# metric of change for 999 posterior samples
+DT::datatable(simp$data)
+
+# percentage difference between first and last year
+perc <- sparta::occurrenceChange(mod_out, firstYear = first_year, lastYear = last_year, change = "percentdif")
+
+# mean, median, cis
+perc[1:3]
+
+# metric of change for 999 posterior samples
+DT::datatable(perc$data)
+
+# annual growth rate between first and last year
+grow <- sparta::occurrenceChange(mod_out, firstYear = first_year, lastYear = last_year, change = "growthrate")
+
+# mean, median, cis
+grow[1:3]
+
+# metric of change for 999 posterior samples
+DT::datatable(grow$data)
+
+# linear growth rate between first and last year
+lin <- sparta::occurrenceChange(mod_out, firstYear = first_year, lastYear = last_year, change = "lineargrowth")
+
+# mean, median, cis
+lin[1:3]
+
+# metric of change for 999 posterior samples
+DT::datatable(lin$data)
+
+# last 10 years
+
+# percentage difference for last 10 years
+perc_10yr <- sparta::occurrenceChange(mod_out, firstYear = last_year - 10, lastYear = last_year, change = "percentdif")
+
+# mean, median, cis
+perc_10yr[1:3]
+
+# annual growth rate for last 10 years
+grow_10yr <- sparta::occurrenceChange(mod_out, firstYear = last_year - 10, lastYear = last_year, change = "growthrate")
+
+# mean, median, cis
+grow_10yr[1:3]
+
+```
+
+
+# Resources
 <br/>
 **Going further:**
 <br/>
